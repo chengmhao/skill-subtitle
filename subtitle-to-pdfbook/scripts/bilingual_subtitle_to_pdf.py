@@ -31,6 +31,16 @@ import sys
 from pathlib import Path
 from typing import List, Tuple, Optional, Set, Dict
 
+from constants import (
+    CliConstants,
+    FontConstants,
+    LanguageConstants,
+    PdfLayoutConstants,
+    PdfStyleConstants,
+    TextConstants,
+    VocabConstants,
+)
+
 # 字幕解析
 try:
     import srt
@@ -61,29 +71,6 @@ except ImportError:
     sys.exit(1)
 
 
-# 语言检测映射表
-LANGUAGE_NAMES = {
-    'zh': '中文',
-    'en': 'English',
-    'es': 'Español',
-    'fr': 'Français',
-    'de': 'Deutsch',
-    'ja': '日本語',
-    'ko': '한국어',
-    'pt': 'Português',
-    'ru': 'Русский',
-    'it': 'Italiano',
-    'ar': 'العربية',
-    'th': 'ไทย',
-    'vi': 'Tiếng Việt',
-    'nl': 'Nederlands',
-    'pl': 'Polski',
-    'tr': 'Türkçe',
-    'id': 'Bahasa Indonesia',
-    'ms': 'Bahasa Melayu',
-}
-
-
 def detect_language(text: str) -> str:
     """
     检测文本语言
@@ -95,86 +82,47 @@ def detect_language(text: str) -> str:
         语言代码，如 'zh', 'en', 'es' 等
     """
     if not text:
-        return 'en'
-    
+        return LanguageConstants.DEFAULT_LANG_CODE
+
     # 统计不同字符类型的比例
-    chinese_chars = len(re.findall(r'[\u4e00-\u9fff]', text))
-    japanese_chars = len(re.findall(r'[\u3040-\u309f\u30a0-\u30ff]', text))
-    korean_chars = len(re.findall(r'[\uac00-\ud7af]', text))
-    arabic_chars = len(re.findall(r'[\u0600-\u06ff]', text))
-    thai_chars = len(re.findall(r'[\u0e00-\u0e7f]', text))
-    cyrillic_chars = len(re.findall(r'[\u0400-\u04ff]', text))
-    
+    script_counts = {
+        script: len(re.findall(pattern, text))
+        for script, pattern in LanguageConstants.SCRIPT_PATTERNS.items()
+    }
+
     total_chars = len(text.replace(' ', ''))
     if total_chars == 0:
         total_chars = 1
-    
+
     # 根据字符比例判断语言
-    chinese_ratio = chinese_chars / total_chars
-    japanese_ratio = japanese_chars / total_chars
-    korean_ratio = korean_chars / total_chars
-    arabic_ratio = arabic_chars / total_chars
-    thai_ratio = thai_chars / total_chars
-    cyrillic_ratio = cyrillic_chars / total_chars
-    
-    if chinese_ratio > 0.1:
+    if script_counts['chinese'] / total_chars > LanguageConstants.SCRIPT_RATIO_THRESHOLDS['zh']:
         return 'zh'
-    elif japanese_ratio > 0.05:
+    elif script_counts['japanese'] / total_chars > LanguageConstants.SCRIPT_RATIO_THRESHOLDS['ja']:
         return 'ja'
-    elif korean_ratio > 0.05:
+    elif script_counts['korean'] / total_chars > LanguageConstants.SCRIPT_RATIO_THRESHOLDS['ko']:
         return 'ko'
-    elif arabic_ratio > 0.05:
+    elif script_counts['arabic'] / total_chars > LanguageConstants.SCRIPT_RATIO_THRESHOLDS['ar']:
         return 'ar'
-    elif thai_ratio > 0.05:
+    elif script_counts['thai'] / total_chars > LanguageConstants.SCRIPT_RATIO_THRESHOLDS['th']:
         return 'th'
-    elif cyrillic_ratio > 0.1:
+    elif script_counts['cyrillic'] / total_chars > LanguageConstants.SCRIPT_RATIO_THRESHOLDS['ru']:
         return 'ru'
-    
+
     # 检测拉丁字母语言（通过常见词汇）
     text_lower = text.lower()
-    
-    # 英语特征词（优先检测）
-    en_words = ['the', 'is', 'are', 'was', 'were', 'have', 'has', 'had', 'will', 'would', 
-                'can', 'could', 'should', 'may', 'might', 'must', 'this', 'that', 'these',
-                'those', 'what', 'which', 'who', 'when', 'where', 'why', 'how', 'not', 'but']
-    en_count = len(re.findall(r'\b(' + '|'.join(en_words) + r')\b', text_lower))
-    
-    # 西班牙语特征（排除与英语重叠的词）
-    es_words = ['el', 'los', 'las', 'que', 'y', 'una', 'por', 'con', 'para', 'muy', 'tengo', 'tiene']
-    es_count = len(re.findall(r'\b(' + '|'.join(es_words) + r')\b', text_lower))
-    
-    # 法语特征
-    fr_words = ['le', 'les', 'du', 'des', 'est', 'une', 'dans', 'avec', 'vous', 'nous', 'je', 'tu']
-    fr_count = len(re.findall(r'\b(' + '|'.join(fr_words) + r')\b', text_lower))
-    
-    # 德语特征
-    de_words = ['der', 'die', 'das', 'und', 'ist', 'eine', 'den', 'von', 'mit', 'für', 'ich', 'du']
-    de_count = len(re.findall(r'\b(' + '|'.join(de_words) + r')\b', text_lower))
-    
-    # 葡萄牙语特征
-    pt_words = ['os', 'que', 'do', 'da', 'em', 'uma', 'para', 'com', 'você', 'não', 'sou']
-    pt_count = len(re.findall(r'\b(' + '|'.join(pt_words) + r')\b', text_lower))
-    
-    # 意大利语特征
-    it_words = ['il', 'lo', 'di', 'che', 'una', 'per', 'con', 'sono', 'essere', 'hanno']
-    it_count = len(re.findall(r'\b(' + '|'.join(it_words) + r')\b', text_lower))
-    
+
+    scores = {}
+    for lang_code, lang_words in LanguageConstants.LATIN_FEATURE_WORDS.items():
+        pattern = r'\b(' + '|'.join(lang_words) + r')\b'
+        scores[lang_code] = len(re.findall(pattern, text_lower))
+
     # 找出得分最高的语言
-    scores = {
-        'en': en_count,
-        'es': es_count,
-        'fr': fr_count,
-        'de': de_count,
-        'pt': pt_count,
-        'it': it_count
-    }
-    
     max_lang = max(scores, key=scores.get)
-    if scores[max_lang] > 2:
+    if scores[max_lang] > LanguageConstants.LATIN_MIN_SCORE:
         return max_lang
-    
+
     # 默认英语
-    return 'en'
+    return LanguageConstants.DEFAULT_LANG_CODE
 
 
 def get_language_name(lang_code: str) -> str:
@@ -187,7 +135,7 @@ def get_language_name(lang_code: str) -> str:
     返回:
         语言显示名称
     """
-    return LANGUAGE_NAMES.get(lang_code, lang_code.upper())
+    return LanguageConstants.LANGUAGE_NAMES.get(lang_code, lang_code.upper())
 
 
 def format_timestamp(seconds: float) -> str:
@@ -210,28 +158,6 @@ def format_timestamp(seconds: float) -> str:
         return f"{minutes:02d}:{secs:02d}"
 
 
-# 词汇难度等级定义（从低到高）
-WORD_LEVELS = {
-    'cet4': 1,      # 四级
-    'cet6': 2,      # 六级
-    'tem4': 2,      # 专四（与六级同级）
-    'tem8': 3,      # 专八
-    'kaoyan': 3,    # 考研（与专八同级）
-    'ielts': 4,     # 雅思
-    'toefl': 4,     # 托福（与雅思同级）
-    'gmat': 5,      # GMAT
-    'gre': 5,       # GRE（与GMAT同级）
-    'sat': 5,       # SAT（与GMAT同级）
-}
-
-# 分类高亮定义
-HIGHLIGHT_CATEGORIES = {
-    'hot': ['cet4', 'cet6', 'kaoyan'],  # 热门单词：四级、六级、考研
-    'college': ['cet4', 'cet6', 'kaoyan', 'tem4', 'tem8'],  # 大学单词：四级、六级、考研、专四、专八
-    'abroad': ['ielts', 'toefl', 'gmat', 'gre', 'sat'],  # 出国单词：雅思、托福、GMAT、GRE、SAT
-}
-
-
 class SubtitleEntry:
     """字幕条目类"""
     def __init__(self, index: int, start_time: float, end_time: float, content: str):
@@ -250,18 +176,18 @@ def clean_subtitle_text(text: str) -> str:
     支持清理: <i>, </i>, <b>, </b>, <u>, </u>, <font ...>, {\\an8}, {\\pos} 等ASS/SSA标签
     """
     # 清理HTML样式标签: <i>, </i>, <b>, </b>, <u>, </u>, <font ...>, </font>
-    text = re.sub(r'</?[iIbBuU]>', '', text)
-    text = re.sub(r'</?[fF][oO][nN][tT][^>]*>', '', text)
+    text = re.sub(TextConstants.HTML_STYLE_TAG_PATTERN, '', text)
+    text = re.sub(TextConstants.HTML_FONT_TAG_PATTERN, '', text)
     
     # 清理ASS/SSA样式标签: {\an8}, {\pos(x,y)}, {\b1}, {\i1}, {\u1}, {\b0}, {\i0}, {\u0} 等
-    text = re.sub(r'\{\\[^}]*\}', '', text)
+    text = re.sub(TextConstants.ASS_STYLE_TAG_PATTERN, '', text)
     
     # 清理其他常见标签: <c.magenta>, </c>, {\k...}, {\K...}
-    text = re.sub(r'</?c(\.[^>]*)?>', '', text)
-    text = re.sub(r'\{\\[kK][^}]*\}', '', text)
+    text = re.sub(TextConstants.VTT_COLOR_TAG_PATTERN, '', text)
+    text = re.sub(TextConstants.ASS_K_TAG_PATTERN, '', text)
     
     # 清理多余空白字符
-    text = re.sub(r'\s+', ' ', text).strip()
+    text = re.sub(TextConstants.WHITESPACE_PATTERN, ' ', text).strip()
     
     return text
 
@@ -330,7 +256,7 @@ def parse_ass(file_path: str) -> List[SubtitleEntry]:
         if isinstance(event, ass.document.Dialogue):
             start = event.start.total_seconds()
             end = event.end.total_seconds()
-            text = re.sub(r'\{[^}]*\}', '', event.text)
+            text = re.sub(TextConstants.ASS_INLINE_TAG_PATTERN, '', event.text)
             text = text.replace('\\N', '\n')
             text = clean_subtitle_text(text)
             if text:
@@ -392,37 +318,7 @@ def find_chinese_font() -> Optional[str]:
     """自动检测系统中的中文字体"""
     system = platform.system()
     
-    font_candidates = []
-    
-    if system == "Linux":
-        font_candidates = [
-            "/usr/share/fonts/truetype/wqy/wqy-microhei.ttc",
-            "/usr/share/fonts/wqy-microhei/wqy-microhei.ttc",
-            "/usr/share/fonts/truetype/wqy/wqy-zenhei.ttc",
-            "/usr/share/fonts/wqy-zenhei/wqy-zenhei.ttc",
-            "/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc",
-            "/usr/share/fonts/google-noto-cjk/NotoSansCJK-Regular.ttc",
-            "/usr/share/fonts/noto-cjk/NotoSansCJK-Regular.ttc",
-            "/usr/share/fonts/truetype/source-han/SourceHanSansCN-Regular.ttf",
-            "/usr/share/fonts/adobe-source-han-sans/SourceHanSansCN-Regular.ttf",
-            "/usr/share/fonts/truetype/droid/DroidSansFallbackFull.ttf",
-            "/usr/share/fonts/truetype/arphic/uming.ttc",
-            "/usr/share/fonts/truetype/arphic/ukai.ttc",
-        ]
-    elif system == "Darwin":
-        font_candidates = [
-            "/System/Library/Fonts/PingFang.ttc",
-            "/System/Library/Fonts/STHeiti Light.ttc",
-            "/System/Library/Fonts/Hiragino Sans GB.ttc",
-            "/Library/Fonts/Arial Unicode.ttf",
-        ]
-    elif system == "Windows":
-        font_candidates = [
-            "C:/Windows/Fonts/msyh.ttc",
-            "C:/Windows/Fonts/simhei.ttf",
-            "C:/Windows/Fonts/simsun.ttc",
-            "C:/Windows/Fonts/simkai.ttf",
-        ]
+    font_candidates = FontConstants.SYSTEM_FONT_CANDIDATES.get(system, [])
     
     for font_path in font_candidates:
         if Path(font_path).exists():
@@ -432,8 +328,8 @@ def find_chinese_font() -> Optional[str]:
         try:
             import subprocess
             result = subprocess.run(
-                ["fc-list", ":lang=zh", "file"],
-                capture_output=True, text=True, timeout=5
+                FontConstants.FC_LIST_CMD,
+                capture_output=True, text=True, timeout=FontConstants.FC_LIST_TIMEOUT_SECONDS
             )
             if result.returncode == 0 and result.stdout.strip():
                 lines = result.stdout.strip().split('\n')
@@ -445,7 +341,7 @@ def find_chinese_font() -> Optional[str]:
     return None
 
 
-def register_chinese_font(font_path: str, font_name: str = "ChineseFont") -> str:
+def register_chinese_font(font_path: str, font_name: str = FontConstants.CHINESE_FONT_NAME) -> str:
     """注册中文字体"""
     try:
         path = Path(font_path)
@@ -455,7 +351,9 @@ def register_chinese_font(font_path: str, font_name: str = "ChineseFont") -> str
         
         if path.suffix.lower() == '.ttc':
             try:
-                pdfmetrics.registerFont(TTFont(font_name, str(path), subfontIndex=0))
+                pdfmetrics.registerFont(
+                    TTFont(font_name, str(path), subfontIndex=FontConstants.TTC_SUBFONT_INDEX)
+                )
                 return font_name
             except Exception:
                 pdfmetrics.registerFont(TTFont(font_name, str(path)))
@@ -470,19 +368,19 @@ def register_chinese_font(font_path: str, font_name: str = "ChineseFont") -> str
 
 def get_page_size() -> Tuple[float, float]:
     """获取A4纸张大小"""
-    width = 210 * mm
-    height = 297 * mm
+    width = PdfLayoutConstants.A4_WIDTH_MM * mm
+    height = PdfLayoutConstants.A4_HEIGHT_MM * mm
     return (width, height)
 
 
-def load_words_from_file(file_path: Path) -> Set[str]:
+def load_words_from_file(file_path: Path) -> Tuple[Set[str], Dict[str, str]]:
     """从文件加载词汇"""
     if not file_path.exists():
         print(f"警告：词汇文件不存在: {file_path}")
         return set(), {}
     
     words = set()
-    definitions = {}  # 单词到释义的映射
+    definitions: Dict[str, str] = {}  # 单词到释义的映射
     with open(file_path, 'r', encoding='utf-8') as f:
         for line in f:
             line = line.strip()
@@ -521,7 +419,11 @@ def load_definitions(skill_dir: Path) -> Dict[str, str]:
     返回:
         释义字典：key为单词，value为释义
     """
-    definitions_file = skill_dir / "references" / "all_words_with_def.txt"
+    definitions_file = (
+        skill_dir
+        / VocabConstants.REFERENCES_DIRNAME
+        / VocabConstants.DEFINITIONS_FILENAME
+    )
     definitions = {}
     
     if definitions_file.exists():
@@ -551,16 +453,8 @@ def load_all_vocab_files(skill_dir: Path) -> Tuple[Dict[str, Set[str]], Dict[str
         释义字典：key为单词，value为释义
     """
     vocab_files = {
-        'cet4': skill_dir / "references" / "cet4_words.txt",
-        'cet6': skill_dir / "references" / "cet6_words.txt",
-        'tem4': skill_dir / "references" / "tem4_words.txt",
-        'tem8': skill_dir / "references" / "tem8_words.txt",
-        'kaoyan': skill_dir / "references" / "kaoyan_words.txt",
-        'ielts': skill_dir / "references" / "ielts_words.txt",
-        'toefl': skill_dir / "references" / "toefl_words.txt",
-        'gmat': skill_dir / "references" / "gmat_words.txt",
-        'gre': skill_dir / "references" / "gre_words.txt",
-        'sat': skill_dir / "references" / "sat_words.txt",
+        vocab_type: skill_dir / VocabConstants.REFERENCES_DIRNAME / filename
+        for vocab_type, filename in VocabConstants.VOCAB_FILENAMES.items()
     }
     
     vocab_dict = {}
@@ -593,7 +487,7 @@ def get_highlight_words_by_level(
     """
     highlight_words = set()
     
-    for vocab_type, level in WORD_LEVELS.items():
+    for vocab_type, level in VocabConstants.WORD_LEVELS.items():
         if level >= min_level and vocab_type in vocab_dict:
             highlight_words.update(vocab_dict[vocab_type])
     
@@ -616,11 +510,11 @@ def get_highlight_words_by_category(
     """
     highlight_words = set()
     
-    if category not in HIGHLIGHT_CATEGORIES:
+    if category not in VocabConstants.HIGHLIGHT_CATEGORIES:
         print(f"警告：未知的分类: {category}")
         return highlight_words
     
-    vocab_types = HIGHLIGHT_CATEGORIES[category]
+    vocab_types = VocabConstants.HIGHLIGHT_CATEGORIES[category]
     for vocab_type in vocab_types:
         if vocab_type in vocab_dict:
             highlight_words.update(vocab_dict[vocab_type])
@@ -652,7 +546,7 @@ def load_custom_words(words_input: str) -> Set[str]:
 def highlight_words_in_text(
     text: str,
     highlight_words: Set[str],
-    text_color: str = "#631511"
+    text_color: str = PdfStyleConstants.DEFAULT_HIGHLIGHT_TEXT_COLOR
 ) -> Tuple[str, Set[str]]:
     """
     在文本中高亮指定单词
@@ -679,7 +573,7 @@ def highlight_words_in_text(
             return f'<font color="{text_color}">{word}</font>'
         return word
     
-    result = re.sub(r"[a-zA-Z]+(?:'[a-zA-Z]+)?", replace_word, text)
+    result = re.sub(TextConstants.ENGLISH_WORD_PATTERN, replace_word, text)
     
     return result, found_words
 
@@ -687,7 +581,7 @@ def highlight_words_in_text(
 def format_definition_list(
     words: List[str],
     definitions: Dict[str, str],
-    text_color: str = "#631511"
+    text_color: str = PdfStyleConstants.DEFAULT_HIGHLIGHT_TEXT_COLOR
 ) -> str:
     """
     格式化单词释义列表
@@ -708,8 +602,8 @@ def format_definition_list(
         defn = definitions.get(word, '')
         if defn:
             # 截取释义，避免过长
-            if len(defn) > 30:
-                defn = defn[:30] + '...'
+            if len(defn) > TextConstants.DEFINITION_MAX_LENGTH:
+                defn = defn[:TextConstants.DEFINITION_MAX_LENGTH] + '...'
             items.append(f'<font color="{text_color}">{word}</font> {defn}')
         else:
             items.append(f'<font color="{text_color}">{word}</font>')
@@ -740,8 +634,8 @@ def format_definition_for_canvas(
     for word in words:
         defn = definitions.get(word, '')
         if defn:
-            if len(defn) > 30:
-                defn = defn[:30] + '...'
+            if len(defn) > TextConstants.DEFINITION_MAX_LENGTH:
+                defn = defn[:TextConstants.DEFINITION_MAX_LENGTH] + '...'
             items.append((word, True))  # 单词需要高亮
             items.append((f' {defn}；', False))  # 释义不高亮
         else:
@@ -776,18 +670,18 @@ def create_styles(font_name: str) -> dict:
         'TitleStyle',
         parent=styles['Heading1'],
         fontName=font_name,
-        fontSize=24,
+        fontSize=PdfStyleConstants.TITLE_FONT_SIZE,
         alignment=1,
-        spaceAfter=20,
-        spaceBefore=10,
+        spaceAfter=PdfStyleConstants.TITLE_SPACE_AFTER,
+        spaceBefore=PdfStyleConstants.TITLE_SPACE_BEFORE,
     )
     
     cell_style = ParagraphStyle(
         'CellStyle',
         parent=styles['Normal'],
         fontName=font_name,
-        fontSize=11,
-        leading=14,
+        fontSize=PdfStyleConstants.CELL_FONT_SIZE,
+        leading=PdfStyleConstants.CELL_LEADING,
         alignment=0,
         wordWrap='CJK',
     )
@@ -796,8 +690,8 @@ def create_styles(font_name: str) -> dict:
         'HeaderStyle',
         parent=styles['Normal'],
         fontName=font_name,
-        fontSize=12,
-        leading=15,
+        fontSize=PdfStyleConstants.HEADER_FONT_SIZE,
+        leading=PdfStyleConstants.HEADER_LEADING,
         alignment=1,
     )
     
@@ -808,7 +702,7 @@ def create_styles(font_name: str) -> dict:
     }
 
 
-def add_page_number(canvas_obj, doc, font_name: str = "Helvetica", total_pages: int = 0):
+def add_page_number(canvas_obj, doc, font_name: str = FontConstants.DEFAULT_FONT_NAME, total_pages: int = 0):
     """
     添加页码到PDF右上角
     格式: X 页 / 总 X 页
@@ -822,13 +716,15 @@ def add_page_number(canvas_obj, doc, font_name: str = "Helvetica", total_pages: 
         text = f"{page_num} 页"
     
     canvas_obj.saveState()
-    canvas_obj.setFont(font_name, 10)
+    canvas_obj.setFont(font_name, PdfStyleConstants.PAGE_NUMBER_FONT_SIZE)
     
     # 计算右上角位置
     page_width = doc.pagesize[0]
-    right_margin = 20 * mm
-    top_margin = 15 * mm
-    x = page_width - right_margin - canvas_obj.stringWidth(text, font_name, 10)
+    right_margin = PdfLayoutConstants.PAGE_NUMBER_RIGHT_MARGIN_MM * mm
+    top_margin = PdfLayoutConstants.PAGE_NUMBER_TOP_MARGIN_MM * mm
+    x = page_width - right_margin - canvas_obj.stringWidth(
+        text, font_name, PdfStyleConstants.PAGE_NUMBER_FONT_SIZE
+    )
     y = doc.pagesize[1] - top_margin
     
     canvas_obj.drawString(x, y, text)
@@ -838,12 +734,12 @@ def add_page_number(canvas_obj, doc, font_name: str = "Helvetica", total_pages: 
 def generate_pdf(
     output_path: str,
     aligned_subs: List[Tuple[Optional[SubtitleEntry], Optional[SubtitleEntry]]],
-    title: str = "双语台词本",
+    title: str = CliConstants.DEFAULT_TITLE,
     font_path: Optional[str] = None,
     highlight_words: Optional[Set[str]] = None,
     definitions: Optional[Dict[str, str]] = None,
-    highlight_text_color: str = "#631511",
-    highlight_column: int = 2,
+    highlight_text_color: str = PdfStyleConstants.DEFAULT_HIGHLIGHT_TEXT_COLOR,
+    highlight_column: int = CliConstants.DEFAULT_HIGHLIGHT_COLUMN,
     lang1: str = None,
     lang2: str = None
 ):
@@ -854,10 +750,10 @@ def generate_pdf(
     1. 高亮单词用指定颜色标记
     2. 每页的高亮单词收集后，放在页面底部展示
     """
-    font_name = "Helvetica"
+    font_name = FontConstants.DEFAULT_FONT_NAME
     if font_path and Path(font_path).exists():
         try:
-            font_name = "ChineseFont"
+            font_name = FontConstants.CHINESE_FONT_NAME
             register_chinese_font(font_path, font_name)
             print(f"使用指定字体: {font_path}")
         except Exception as e:
@@ -871,10 +767,10 @@ def generate_pdf(
     doc = SimpleDocTemplate(
         output_path,
         pagesize=page_size,
-        leftMargin=20*mm,
-        rightMargin=20*mm,
-        topMargin=20*mm,
-        bottomMargin=20*mm,  # 释义现在是表格的一部分，减少下边距
+        leftMargin=PdfLayoutConstants.PAGE_MARGIN_LEFT_MM * mm,
+        rightMargin=PdfLayoutConstants.PAGE_MARGIN_RIGHT_MM * mm,
+        topMargin=PdfLayoutConstants.PAGE_MARGIN_TOP_MM * mm,
+        bottomMargin=PdfLayoutConstants.PAGE_MARGIN_BOTTOM_MM * mm,  # 释义现在是表格的一部分，减少下边距
     )
     
     styles = create_styles(font_name)
@@ -885,8 +781,8 @@ def generate_pdf(
         'DefnStyle',
         parent=base_styles['Normal'],
         fontName=font_name,
-        fontSize=10,
-        leading=14,
+        fontSize=PdfStyleConstants.DEFINITION_BASE_FONT_SIZE,
+        leading=PdfStyleConstants.DEFINITION_BASE_LEADING,
         alignment=0,
         wordWrap='CJK',
     )
@@ -914,7 +810,7 @@ def generate_pdf(
     timestamp_style = ParagraphStyle(
         'TimestampStyle',
         parent=styles['cell'],
-        fontSize=9,  # 正文11，小两个字号
+        fontSize=PdfStyleConstants.TIMESTAMP_FONT_SIZE,  # 正文11，小两个字号
         textColor=colors.grey,
     )
     
@@ -945,10 +841,10 @@ def generate_pdf(
         found_words_in_row = set()
         
         if highlight_words:
-            if highlight_column in [1, 3] and text1:
+            if highlight_column in [CliConstants.HIGHLIGHT_COLUMN_LEFT, CliConstants.HIGHLIGHT_COLUMN_BOTH] and text1:
                 text1_raw, found1 = highlight_words_in_text(text1_raw, highlight_words, highlight_text_color)
                 found_words_in_row.update(found1)
-            if highlight_column in [2, 3] and text2:
+            if highlight_column in [CliConstants.HIGHLIGHT_COLUMN_RIGHT, CliConstants.HIGHLIGHT_COLUMN_BOTH] and text2:
                 text2_raw, found2 = highlight_words_in_text(text2_raw, highlight_words, highlight_text_color)
                 found_words_in_row.update(found2)
         
@@ -969,21 +865,31 @@ def generate_pdf(
     defn_style = ParagraphStyle(
         'DefnStyle',
         parent=styles['cell'],
-        fontSize=9,
+        fontSize=PdfStyleConstants.DEFINITION_FONT_SIZE,
         textColor=colors.grey,
     )
     
     # 计算页面可用尺寸（单位：points）
-    available_width = page_size[0] - 40*mm  # 页面宽度 - 左右边距
-    timestamp_width = 15*mm  # 时间轴列宽度
+    available_width = page_size[0] - PdfLayoutConstants.TOTAL_HORIZONTAL_MARGIN_MM * mm  # 页面宽度 - 左右边距
+    timestamp_width = PdfLayoutConstants.TIMESTAMP_COLUMN_WIDTH_MM * mm  # 时间轴列宽度
     col_width = (available_width - timestamp_width) / 2  # 字幕列宽度
     total_defn_width = available_width  # 释义行总宽度
     
     # 页面可用高度（单位：points）
-    available_height = page_size[1] - 20*mm - 20*mm - 35*mm  # A4高度 - 上边距 - 下边距 - 标题区域
-    header_height = 12 * mm  # 表头高度
-    row_padding = 3 * mm  # 每行的上下padding总和（紧凑布局）
-    safety_margin = 3 * mm  # 安全边距
+    available_height0 = (
+        page_size[1]
+        - PdfLayoutConstants.PAGE_MARGIN_TOP_MM * mm
+        - PdfLayoutConstants.PAGE_MARGIN_BOTTOM_MM * mm
+        - PdfLayoutConstants.TITLE_BLOCK_RESERVED_MM * mm
+    )  # A4高度 - 上边距 - 下边距 - 标题区域
+    available_height = (
+        page_size[1]
+        - PdfLayoutConstants.PAGE_MARGIN_TOP_MM * mm
+        - PdfLayoutConstants.PAGE_MARGIN_BOTTOM_MM * mm
+    )  # A4高度 - 上边距 - 下边距 - 标题区域
+    header_height = PdfLayoutConstants.HEADER_HEIGHT_MM * mm  # 表头高度
+    row_padding = PdfLayoutConstants.ROW_PADDING_MM * mm  # 每行的上下padding总和（紧凑布局）
+    safety_margin = PdfLayoutConstants.SAFETY_MARGIN_MM * mm  # 安全边距
     
     # 动态计算每页内容
     pages_data = []
@@ -1005,7 +911,7 @@ def generate_pdf(
                 else:  # 字幕2列
                     w = col_width
                 # wrap返回(实际宽度, 实际高度)，单位都是points
-                _, h = cell.wrap(w, 1000*mm)
+                _, h = cell.wrap(w, PdfLayoutConstants.WRAP_CALC_MAX_HEIGHT_MM * mm)
                 max_height = max(max_height, h)
         # 加上padding（已经是points单位）
         return max_height + row_padding
@@ -1018,7 +924,7 @@ def generate_pdf(
         if not defn_text:
             return 0
         defn_para = Paragraph(defn_text, defn_style)
-        _, h = defn_para.wrap(total_defn_width, 1000*mm)
+        _, h = defn_para.wrap(total_defn_width, PdfLayoutConstants.WRAP_CALC_MAX_HEIGHT_MM * mm)
         # 加上padding（已经是points单位）
         return h + row_padding
     
@@ -1043,15 +949,16 @@ def generate_pdf(
         defn_height = calculate_defn_height(test_words)
         
         # 计算总需要高度：表头 + 当前已用 + 该行 + 释义 + 安全边距
-        total_needed = header_height + current_height + row_height + defn_height + safety_margin
+        total_needed = current_height + row_height + defn_height + safety_margin
         
-        if total_needed <= available_height or len(current_page_rows) == 0:
+        if total_needed <= (available_height0 if len(pages_data) == 0 else available_height) or len(current_page_rows) == 0:
             # 可以添加到当前页，或者当前页为空（强制添加至少一行）
             current_page_rows.append(row)
             current_page_words = test_words
             current_height += row_height
         else:
             # 需要换页，先保存当前页
+            # print(current_height, header_height, defn_height, safety_margin, len(current_page_rows), "current_height")
             pages_data.append((current_page_rows, current_page_words, current_height))
             # 开始新页面
             current_page_rows = [row]
@@ -1069,7 +976,7 @@ def generate_pdf(
         
         if page_idx == 0:
             story.append(Paragraph(title, styles['title']))
-            story.append(Spacer(1, 10*mm))
+            story.append(Spacer(1, PdfLayoutConstants.TITLE_SPACER_MM * mm))
         
         # 构建表格数据：表头 + 内容行 + 释义行
         page_table_data = [header_row]  # 添加表头
@@ -1092,37 +999,43 @@ def generate_pdf(
             ('BACKGROUND', (0, 0), (-1, 0), colors.white),
             ('TEXTCOLOR', (0, 0), (-1, 0), colors.black),
             ('FONTNAME', (0, 0), (-1, 0), font_name),
-            ('FONTSIZE', (0, 0), (-1, 0), 12),
+            ('FONTSIZE', (0, 0), (-1, 0), PdfStyleConstants.HEADER_FONT_SIZE),
             ('ALIGN', (0, 0), (-1, 0), 'CENTER'),
             ('VALIGN', (0, 0), (-1, 0), 'MIDDLE'),
-            ('BOTTOMPADDING', (0, 0), (-1, 0), 2),
-            ('TOPPADDING', (0, 0), (-1, 0), 2),
+            ('BOTTOMPADDING', (0, 0), (-1, 0), PdfStyleConstants.TABLE_HEADER_BOTTOM_PADDING),
+            ('TOPPADDING', (0, 0), (-1, 0), PdfStyleConstants.TABLE_HEADER_TOP_PADDING),
             
             # 内容区域样式
             ('BACKGROUND', (0, 1), (-1, -1), colors.white),
             ('TEXTCOLOR', (0, 1), (-1, -1), colors.black),
             ('FONTNAME', (0, 1), (-1, -1), font_name),
-            ('FONTSIZE', (0, 1), (-1, -1), 11),
+            ('FONTSIZE', (0, 1), (-1, -1), PdfStyleConstants.CELL_FONT_SIZE),
             ('ALIGN', (0, 1), (0, -1), 'LEFT'),
             ('ALIGN', (1, 1), (-1, -1), 'LEFT'),
             ('VALIGN', (0, 1), (-1, -1), 'TOP'),
-            ('LEFTPADDING', (0, 0), (-1, -1), 4),
-            ('RIGHTPADDING', (0, 0), (-1, -1), 4),
-            ('BOTTOMPADDING', (0, 1), (-1, -1), 1),
-            ('TOPPADDING', (0, 1), (-1, -1), 1),
+            ('LEFTPADDING', (0, 0), (-1, -1), PdfStyleConstants.TABLE_CELL_LEFT_PADDING),
+            ('RIGHTPADDING', (0, 0), (-1, -1), PdfStyleConstants.TABLE_CELL_RIGHT_PADDING),
+            ('BOTTOMPADDING', (0, 1), (-1, -1), PdfStyleConstants.TABLE_CELL_BOTTOM_PADDING),
+            ('TOPPADDING', (0, 1), (-1, -1), PdfStyleConstants.TABLE_CELL_TOP_PADDING),
             
             # 边框样式
-            ('LINEBELOW', (0, 0), (-1, 0), 1, colors.black),
-            ('LINEBELOW', (1, 1), (-1, -1), 0.5, colors.lightgrey),
+            ('LINEBELOW', (0, 0), (-1, 0), PdfStyleConstants.TABLE_HEADER_LINE_WIDTH, colors.black),
+            ('LINEBELOW', (1, 1), (-1, -1), PdfStyleConstants.TABLE_CONTENT_LINE_WIDTH, colors.lightgrey),
         ])
         
         # 释义行特殊样式：合并整行（三列）
         if is_defn_row:
             table_style.add('BACKGROUND', (0, last_row_idx), (-1, last_row_idx), 
-                          colors.Color(0.95, 0.95, 0.95))
+                          colors.Color(*PdfStyleConstants.DEFINITION_BACKGROUND_RGB))
             table_style.add('SPAN', (0, last_row_idx), (-1, last_row_idx))  # 合并整行
             table_style.add('ALIGN', (0, last_row_idx), (-1, last_row_idx), 'LEFT')
-            table_style.add('LINEBELOW', (0, last_row_idx), (-1, last_row_idx), 0, colors.white)
+            table_style.add(
+                'LINEBELOW',
+                (0, last_row_idx),
+                (-1, last_row_idx),
+                PdfStyleConstants.TABLE_DEFINITION_LINE_WIDTH,
+                colors.white
+            )
         
         page_table.setStyle(table_style)
         story.append(page_table)
@@ -1134,11 +1047,13 @@ def generate_pdf(
         page_num = canvas_obj.getPageNumber()
         text = f"{page_num} 页 / 总 {total_pages} 页"
         canvas_obj.saveState()
-        canvas_obj.setFont(font_name, 10)
+        canvas_obj.setFont(font_name, PdfStyleConstants.PAGE_NUMBER_FONT_SIZE)
         page_width = doc_obj.pagesize[0]
-        right_margin = 20 * mm
-        top_margin = 15 * mm
-        x = page_width - right_margin - canvas_obj.stringWidth(text, font_name, 10)
+        right_margin = PdfLayoutConstants.PAGE_NUMBER_RIGHT_MARGIN_MM * mm
+        top_margin = PdfLayoutConstants.PAGE_NUMBER_TOP_MARGIN_MM * mm
+        x = page_width - right_margin - canvas_obj.stringWidth(
+            text, font_name, PdfStyleConstants.PAGE_NUMBER_FONT_SIZE
+        )
         y = doc_obj.pagesize[1] - top_margin
         canvas_obj.drawString(x, y, text)
         canvas_obj.restoreState()
@@ -1146,7 +1061,7 @@ def generate_pdf(
     doc.build(story, onFirstPage=add_page_number_callback, onLaterPages=add_page_number_callback)
     
     print(f"PDF生成完成: {output_path}")
-    print(f"页面大小: A4纸张 ({210}mm × {297}mm)")
+    print(f"页面大小: A4纸张 ({PdfLayoutConstants.A4_WIDTH_MM}mm × {PdfLayoutConstants.A4_HEIGHT_MM}mm)")
     print(f"总页数: {total_pages}")
     if highlight_words:
         print(f"已高亮 {len(highlight_words)} 个单词")
@@ -1160,7 +1075,7 @@ def _auto_detect_font() -> str:
     
     if detected_font:
         try:
-            font_name = "ChineseFont"
+            font_name = FontConstants.CHINESE_FONT_NAME
             register_chinese_font(detected_font, font_name)
             print(f"自动检测到中文字体: {detected_font}")
             return font_name
@@ -1168,12 +1083,12 @@ def _auto_detect_font() -> str:
             print(f"警告：自动检测的字体注册失败: {e}")
             print("警告：未找到可用的中文字体，中文可能显示为方框")
             print("请通过 --font 参数指定中文字体文件路径")
-            return "Helvetica"
+            return FontConstants.DEFAULT_FONT_NAME
     else:
         print("警告：未在系统中检测到中文字体")
         print("请通过 --font 参数指定中文字体文件路径")
         print("推荐安装: 文泉驿微米黑 (wqy-microhei) 或 思源黑体 (Noto Sans CJK)")
-        return "Helvetica"
+        return FontConstants.DEFAULT_FONT_NAME
 
 
 def get_skill_dir() -> Path:
@@ -1189,7 +1104,7 @@ def main():
     parser.add_argument('--single-file', '-sf', help='单文件双语模式')
     
     parser.add_argument('--output', '-o', required=True, help='输出PDF文件路径')
-    parser.add_argument('--title', '-t', default='双语台词本', help='台词本标题')
+    parser.add_argument('--title', '-t', default=CliConstants.DEFAULT_TITLE, help='台词本标题')
     parser.add_argument('--font', '-f', help='自定义字体路径（支持中文）')
     
     # 单词高亮参数 - 按难度等级
@@ -1225,9 +1140,11 @@ def main():
     parser.add_argument('--highlight-words', '-hw', 
                         help='自定义高亮词汇（文件路径或逗号分隔的词汇）')
     
-    parser.add_argument('--highlight-color', '-hc', default='#631511',
-                        help='高亮文字颜色（默认: #631511 深红色）')
-    parser.add_argument('--highlight-column', '-hcol', type=int, default=2, choices=[1, 2, 3],
+    parser.add_argument('--highlight-color', '-hc', default=CliConstants.DEFAULT_HIGHLIGHT_COLOR,
+                        help=f'高亮文字颜色（默认: {CliConstants.DEFAULT_HIGHLIGHT_COLOR} 深红色）')
+    parser.add_argument('--highlight-column', '-hcol', type=int,
+                        default=CliConstants.DEFAULT_HIGHLIGHT_COLUMN,
+                        choices=CliConstants.HIGHLIGHT_COLUMN_CHOICES,
                         help='高亮列: 1=左列, 2=右列, 3=两列都高亮（默认: 2）')
     
     args = parser.parse_args()
@@ -1263,25 +1180,25 @@ def main():
     min_level = 0
     
     if args.highlight_cet4:
-        min_level = max(min_level, WORD_LEVELS['cet4'])
+        min_level = max(min_level, VocabConstants.WORD_LEVELS['cet4'])
     if args.highlight_cet6:
-        min_level = max(min_level, WORD_LEVELS['cet6'])
+        min_level = max(min_level, VocabConstants.WORD_LEVELS['cet6'])
     if args.highlight_tem4:
-        min_level = max(min_level, WORD_LEVELS['tem4'])
+        min_level = max(min_level, VocabConstants.WORD_LEVELS['tem4'])
     if args.highlight_tem8:
-        min_level = max(min_level, WORD_LEVELS['tem8'])
+        min_level = max(min_level, VocabConstants.WORD_LEVELS['tem8'])
     if args.highlight_kaoyan:
-        min_level = max(min_level, WORD_LEVELS['kaoyan'])
+        min_level = max(min_level, VocabConstants.WORD_LEVELS['kaoyan'])
     if args.highlight_ielts:
-        min_level = max(min_level, WORD_LEVELS['ielts'])
+        min_level = max(min_level, VocabConstants.WORD_LEVELS['ielts'])
     if args.highlight_toefl:
-        min_level = max(min_level, WORD_LEVELS['toefl'])
+        min_level = max(min_level, VocabConstants.WORD_LEVELS['toefl'])
     if args.highlight_gmat:
-        min_level = max(min_level, WORD_LEVELS['gmat'])
+        min_level = max(min_level, VocabConstants.WORD_LEVELS['gmat'])
     if args.highlight_gre:
-        min_level = max(min_level, WORD_LEVELS['gre'])
+        min_level = max(min_level, VocabConstants.WORD_LEVELS['gre'])
     if args.highlight_sat:
-        min_level = max(min_level, WORD_LEVELS['sat'])
+        min_level = max(min_level, VocabConstants.WORD_LEVELS['sat'])
     
     # 按难度等级高亮
     if min_level > 0:
@@ -1289,14 +1206,7 @@ def main():
         highlight_words = get_highlight_words_by_level(min_level, vocab_dict)
         
         # 显示高亮范围
-        level_names = {
-            1: "四级",
-            2: "六级/专四",
-            3: "专八/考研",
-            4: "雅思/托福",
-            5: "GMAT/GRE/SAT"
-        }
-        print(f"高亮等级: {level_names.get(min_level, '未知')} 及以上")
+        print(f"高亮等级: {VocabConstants.LEVEL_DISPLAY_NAMES.get(min_level, '未知')} 及以上")
     
     # 按分类高亮
     if args.highlight_hot or args.highlight_college or args.highlight_abroad:
@@ -1304,17 +1214,17 @@ def main():
             vocab_dict, definitions = load_all_vocab_files(skill_dir)
         
         if args.highlight_hot:
-            words = get_highlight_words_by_category('hot', vocab_dict)
+            words = get_highlight_words_by_category(VocabConstants.CATEGORY_HOT, vocab_dict)
             highlight_words.update(words)
             print(f"高亮分类: 热门单词 ({len(words)} 个)")
         
         if args.highlight_college:
-            words = get_highlight_words_by_category('college', vocab_dict)
+            words = get_highlight_words_by_category(VocabConstants.CATEGORY_COLLEGE, vocab_dict)
             highlight_words.update(words)
             print(f"高亮分类: 大学单词 ({len(words)} 个)")
         
         if args.highlight_abroad:
-            words = get_highlight_words_by_category('abroad', vocab_dict)
+            words = get_highlight_words_by_category(VocabConstants.CATEGORY_ABROAD, vocab_dict)
             highlight_words.update(words)
             print(f"高亮分类: 出国单词 ({len(words)} 个)")
     
