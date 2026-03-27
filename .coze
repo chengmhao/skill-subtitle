@@ -1,0 +1,6 @@
+[skill]
+  skill_package = "subtitle-to-pdfbook.skill"
+  name = "subtitle-to-pdfbook"
+  description = "将双语字幕文件转换为A4规格PDF台词本，支持SRT/VTT/ASS格式，自动对齐双语言字幕，生成表格形式展示的PDF，支持按难度等级（四级/六级/专四/专八/考研/雅思/托福/GMAT/GRE/SAT）高亮英语单词，释义集中展示在每页底部，动态计算每页行数最大化空间利用率，紧凑布局提升内容密度"
+  project_name = "字幕处理技能"
+  project_description = "双语字幕转PDF台词本，支持词汇高亮"
