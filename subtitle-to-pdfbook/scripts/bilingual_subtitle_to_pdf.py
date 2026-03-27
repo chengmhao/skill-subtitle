@@ -949,7 +949,7 @@ def generate_pdf(
         defn_height = calculate_defn_height(test_words)
         
         # 计算总需要高度：表头 + 当前已用 + 该行 + 释义 + 安全边距
-        total_needed = current_height + row_height + defn_height + safety_margin
+        total_needed = header_height + current_height + row_height + defn_height + safety_margin
         
         if total_needed <= (available_height0 if len(pages_data) == 0 else available_height) or len(current_page_rows) == 0:
             # 可以添加到当前页，或者当前页为空（强制添加至少一行）
